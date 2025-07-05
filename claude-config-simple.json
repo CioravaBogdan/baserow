@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "baserow-simple": {
+        "command": "node",
+        "args": ["d:\\Projects\\Baserow\\index-simple.js"],
+        "env": {
+          "BASEROW_URL": "http://localhost:8010",
+          "BASEROW_API_TOKEN": "CtsgvsiPCkAzfEMXsqXQGNSlN5ZtbqTu"
+        }
+      }
+    }
+  }
+}

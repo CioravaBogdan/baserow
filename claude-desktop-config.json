@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "baserow-viral": {
+        "command": "node",
+        "args": ["d:\\Projects\\Baserow\\index.js"],        "env": {
+          "BASEROW_URL": "http://localhost:8010",
+          "BASEROW_API_TOKEN": "CtsgvsiPCkAzfEMXsqXQGNSlN5ZtbqTu"
+        }
+      }
+    }
+  }
+}

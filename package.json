@@ -1,0 +1,29 @@
+{
+  "name": "baserow-mcp-server",
+  "version": "1.0.0",
+  "description": "Enhanced MCP Server for Baserow with advanced database management capabilities",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "setup": "node setup.js",
+    "health": "node health-check.js"
+  },
+  "keywords": [
+    "mcp",
+    "baserow",
+    "database",
+    "model-context-protocol"
+  ],
+  "author": "Baserow MCP Integration",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.0",
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^16.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

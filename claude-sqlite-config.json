@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dragulai-sqlite": {
+      "command": "node",
+      "args": ["d:\\Projects\\Baserow\\mcp-sqlite-server.js"],
+      "env": {}
+    }
+  }
+}

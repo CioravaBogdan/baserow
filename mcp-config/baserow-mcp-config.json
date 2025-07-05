@@ -1,0 +1,223 @@
+{
+  "mcp": {
+    "enabled": true,
+    "version": "1.0.0",
+    "server": {
+      "host": "0.0.0.0",
+      "port": 3003,
+      "cors": {
+        "enabled": true,
+        "allowed_origins": ["*"],
+        "allowed_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allowed_headers": ["Content-Type", "Authorization", "X-Requested-With"]
+      }
+    },
+    "authentication": {
+      "enabled": true,
+      "tokens": {
+        "claude_vscode": {
+          "token": "${CLAUDE_MCP_TOKEN}",
+          "permissions": ["read", "write", "admin"],
+          "rate_limit": 500,
+          "description": "Claude VS Code integration"
+        },
+        "n8n_workflow": {
+          "token": "${N8N_API_TOKEN}",
+          "permissions": ["read", "write"],
+          "rate_limit": 1000,
+          "description": "n8n automation workflows"
+        },
+        "analytics_readonly": {
+          "token": "${ANALYTICS_API_TOKEN}",
+          "permissions": ["read"],
+          "rate_limit": 100,
+          "description": "Analytics dashboard read-only access"
+        }
+      }
+    },
+    "features": {
+      "natural_language": {
+        "enabled": true,
+        "max_context_length": 8000,
+        "supported_operations": [
+          "create_row",
+          "update_row",
+          "delete_row",
+          "search_rows",
+          "create_table",
+          "update_table_schema",
+          "bulk_operations",
+          "generate_reports"
+        ]
+      },
+      "bulk_operations": {
+        "enabled": true,
+        "max_batch_size": 1000,
+        "timeout_seconds": 300
+      },
+      "schema_modification": {
+        "enabled": true,
+        "allowed_operations": [
+          "create_field",
+          "update_field",
+          "delete_field",
+          "create_table",
+          "update_table",
+          "delete_table"
+        ]
+      },
+      "webhooks": {
+        "enabled": true,
+        "max_retries": 3,
+        "timeout_seconds": 30,
+        "supported_events": [
+          "row_created",
+          "row_updated",
+          "row_deleted",
+          "table_created",
+          "table_updated",
+          "bulk_operation_completed"
+        ]
+      },
+      "real_time": {
+        "enabled": true,
+        "websocket_port": 3004,
+        "heartbeat_interval": 30
+      }
+    },
+    "database_mapping": {
+      "viral_content": {
+        "database_id": 1,
+        "description": "Viral content management for YouTube/TikTok",
+        "tables": {
+          "content_ideas": {
+            "table_id": 1,
+            "mcp_name": "content_ideas",
+            "description": "Content ideas and concepts for viral videos",
+            "ai_instructions": "This table stores video content ideas with hooks, target demographics, and viral potential scoring."
+          },
+          "video_production": {
+            "table_id": 2,
+            "mcp_name": "video_production",
+            "description": "Video production tracking and workflow",
+            "ai_instructions": "Track video production from script to final video, including AI generation prompts and file paths."
+          },
+          "publishing_schedule": {
+            "table_id": 3,
+            "mcp_name": "publishing_schedule",
+            "description": "Content publishing schedule across platforms",
+            "ai_instructions": "Manage when and where content gets published, with platform-specific optimizations."
+          },
+          "performance_analytics": {
+            "table_id": 4,
+            "mcp_name": "performance_analytics",
+            "description": "Video performance metrics and analytics",
+            "ai_instructions": "Track video performance across all platforms with engagement and revenue metrics."
+          },
+          "content_calendar": {
+            "table_id": 5,
+            "mcp_name": "content_calendar",
+            "description": "Weekly content planning calendar",
+            "ai_instructions": "Weekly view of content schedule with themes and planning notes."
+          }
+        }
+      }
+    },
+    "ai_assistant": {
+      "enabled": true,
+      "model_preferences": {
+        "primary_model": "claude-3-5-sonnet",
+        "context_management": "smart_truncation",
+        "response_format": "structured_json"
+      },
+      "content_generation": {
+        "viral_hooks": {
+          "enabled": true,
+          "templates": [
+            "POV: You're a parent and...",
+            "Things no one tells you about parenting...",
+            "Why your toddler...",
+            "Gentle parenting hack:",
+            "Millennial parents be like..."
+          ]
+        },
+        "video_scripts": {
+          "enabled": true,
+          "max_length": 60,
+          "style": "engaging_educational",
+          "target_platforms": ["tiktok", "youtube_shorts", "instagram_reels"]
+        }
+      }
+    },
+    "integrations": {
+      "n8n": {
+        "enabled": true,
+        "webhook_base_url": "https://n8n.infant-viral.com/webhook",
+        "workflows": {
+          "content_approval": "webhook_content_approval",
+          "video_upload": "webhook_video_upload",
+          "performance_check": "webhook_performance_check"
+        }
+      },
+      "claude_desktop": {
+        "enabled": true,
+        "config_template": {
+          "mcpServers": {
+            "baserow-viral": {
+              "command": "node",
+              "args": ["./mcp-server.js"],
+              "env": {
+                "BASEROW_API_URL": "https://baserow.byinfant.com/api",
+                "BASEROW_MCP_TOKEN": "${CLAUDE_MCP_TOKEN}",
+                "BASEROW_MCP_ENDPOINT": "https://baserow.infant-viral.com/mcp"
+              }
+            }
+          }
+        }
+      }
+    },
+    "logging": {
+      "level": "info",
+      "file_path": "/var/log/baserow/mcp.log",
+      "max_file_size": "100MB",
+      "max_files": 5,
+      "include_request_body": false,
+      "include_response_body": false
+    },
+    "monitoring": {
+      "metrics": {
+        "enabled": true,
+        "prometheus_endpoint": "/metrics",
+        "custom_metrics": [
+          "mcp_requests_total",
+          "mcp_requests_duration",
+          "mcp_active_connections",
+          "mcp_errors_total"
+        ]
+      },
+      "health_check": {
+        "enabled": true,
+        "endpoint": "/health",
+        "dependencies": ["database", "redis", "api"]
+      }
+    },
+    "security": {
+      "rate_limiting": {
+        "enabled": true,
+        "window_ms": 3600000,
+        "default_limit": 1000,
+        "token_based_limits": true
+      },
+      "request_validation": {
+        "enabled": true,
+        "max_request_size": "10MB",
+        "allowed_content_types": ["application/json", "multipart/form-data"]
+      },
+      "ip_filtering": {
+        "enabled": false,
+        "whitelist": [],
+        "blacklist": []
+      }
+    }
+  }
+}

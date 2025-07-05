@@ -1,0 +1,910 @@
+  // ====================================
+  // ADVANCED DATABASE MANAGEMENT METHODS
+  // ====================================
+
+  async analyzeDatabaseSchema(databaseId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      // Get database info
+      const dbResponse = await client.get(`/applications/${databaseId}/`);
+      const database = dbResponse.data;
+      
+      // Get all tables
+      const tablesResponse = await client.get(`/database/tables/database/${databaseId}/`);
+      const tables = tablesResponse.data;
+      
+      const schema = {
+        database: {
+          id: database.id,
+          name: database.name,
+          created_on: database.created_on,
+          updated_on: database.updated_on
+        },
+        tables: [],
+        relationships: [],
+        statistics: {
+          total_tables: tables.length,
+          total_fields: 0,
+          total_rows: 0
+        }
+      };
+
+      // Analyze each table
+      for (const table of tables) {
+        const fieldsResponse = await client.get(`/database/fields/table/${table.id}/`);
+        const fields = fieldsResponse.data;
+        
+        const rowsResponse = await client.get(`/database/rows/table/${table.id}/?size=1`);
+        const rowCount = rowsResponse.data.count || 0;
+
+        const tableSchema = {
+          id: table.id,
+          name: table.name,
+          created_on: table.created_on,
+          updated_on: table.updated_on,
+          row_count: rowCount,
+          fields: fields.map(field => ({
+            id: field.id,
+            name: field.name,
+            type: field.type,
+            primary: field.primary || false,
+            required: field.required || false,
+            unique: field.unique || false,
+            options: field.type_options || {}
+          }))
+        };
+
+        // Include sample data if requested
+        if (options.include_data_samples && rowCount > 0) {
+          const sampleResponse = await client.get(`/database/rows/table/${table.id}/?size=5`);
+          tableSchema.sample_data = sampleResponse.data.results;
+        }
+
+        schema.tables.push(tableSchema);
+        schema.statistics.total_fields += fields.length;
+        schema.statistics.total_rows += rowCount;
+
+        // Analyze relationships if requested
+        if (options.analyze_relationships) {
+          fields.forEach(field => {
+            if (field.type === 'link_row' && field.link_row_table_id) {
+              schema.relationships.push({
+                from_table_id: table.id,
+                from_table_name: table.name,
+                from_field_id: field.id,
+                from_field_name: field.name,
+                to_table_id: field.link_row_table_id,
+                relationship_type: 'link_row'
+              });
+            }
+          });
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `🔍 Database Schema Analysis Complete:\n\n${JSON.stringify(schema, null, 2)}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Schema analysis failed: ${error.message}`);
+    }
+  }
+
+  async backupDatabase(databaseId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      const backup = {
+        metadata: {
+          created_at: new Date().toISOString(),
+          database_id: databaseId,
+          backup_name: options.backup_name || `backup-${Date.now()}`,
+          version: "2.0",
+          options: options
+        },
+        database: null,
+        tables: [],
+        data: []
+      };
+
+      // Backup database structure
+      const dbResponse = await client.get(`/applications/${databaseId}/`);
+      backup.database = dbResponse.data;
+
+      // Backup tables and their structure
+      const tablesResponse = await client.get(`/database/tables/database/${databaseId}/`);
+      const tables = tablesResponse.data;
+
+      for (const table of tables) {
+        // Get table fields
+        const fieldsResponse = await client.get(`/database/fields/table/${table.id}/`);
+        const fields = fieldsResponse.data;
+
+        const tableBackup = {
+          ...table,
+          fields: fields
+        };
+
+        backup.tables.push(tableBackup);
+
+        // Backup data if requested
+        if (options.include_data) {
+          let page = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const rowsResponse = await client.get(`/database/rows/table/${table.id}/?page=${page}&size=200`);
+            const data = rowsResponse.data;
+
+            if (data.results && data.results.length > 0) {
+              backup.data.push({
+                table_id: table.id,
+                table_name: table.name,
+                rows: data.results,
+                page: page
+              });
+              page++;
+              hasMore = data.next !== null;
+            } else {
+              hasMore = false;
+            }
+          }
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `💾 Database backup created successfully:\n\nBackup Name: ${backup.metadata.backup_name}\nTables: ${backup.tables.length}\nData Included: ${options.include_data ? 'Yes' : 'No'}\nSize: ${JSON.stringify(backup).length} bytes`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Database backup failed: ${error.message}`);
+    }
+  }
+
+  async duplicateDatabase(sourceDatabaseId, newDatabaseName, options = {}) {
+    try {
+      const client = this.getHttpClient();
+
+      // Create new database
+      const createResponse = await client.post('/applications/', {
+        name: newDatabaseName,
+        type: 'database'
+      });
+      const newDatabase = createResponse.data;
+
+      // Get source database structure
+      const tablesResponse = await client.get(`/database/tables/database/${sourceDatabaseId}/`);
+      const sourceTables = tablesResponse.data;
+
+      const duplicatedTables = [];
+
+      for (const sourceTable of sourceTables) {
+        // Create new table
+        const newTableResponse = await client.post(`/database/tables/database/${newDatabase.id}/`, {
+          name: sourceTable.name,
+          init_with_data: false
+        });
+        const newTable = newTableResponse.data;
+
+        // Get source table fields
+        const fieldsResponse = await client.get(`/database/fields/table/${sourceTable.id}/`);
+        const sourceFields = fieldsResponse.data;
+
+        // Create fields in new table (skip primary key)
+        for (const field of sourceFields) {
+          if (!field.primary) {
+            await client.post(`/database/fields/table/${newTable.id}/`, {
+              type: field.type,
+              name: field.name,
+              ...field.type_options
+            });
+          }
+        }
+
+        duplicatedTables.push({
+          source: sourceTable,
+          duplicate: newTable
+        });
+
+        // Copy data if requested
+        if (options.include_data) {
+          let page = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const rowsResponse = await client.get(`/database/rows/table/${sourceTable.id}/?page=${page}&size=100`);
+            const data = rowsResponse.data;
+
+            if (data.results && data.results.length > 0) {
+              // Create rows in new table
+              for (const row of data.results) {
+                // Remove system fields
+                const { id, created_on, updated_on, order, ...rowData } = row;
+                await client.post(`/database/rows/table/${newTable.id}/`, rowData);
+              }
+              page++;
+              hasMore = data.next !== null;
+            } else {
+              hasMore = false;
+            }
+          }
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `📋 Database duplicated successfully:\n\nSource Database ID: ${sourceDatabaseId}\nNew Database: ${newDatabase.name} (ID: ${newDatabase.id})\nTables Duplicated: ${duplicatedTables.length}\nData Copied: ${options.include_data ? 'Yes' : 'No'}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Database duplication failed: ${error.message}`);
+    }
+  }
+
+  async optimizeDatabase(databaseId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      const optimization = {
+        database_id: databaseId,
+        optimization_type: options.optimization_type || 'full',
+        dry_run: options.dry_run !== false,
+        recommendations: [],
+        performance_metrics: {},
+        optimizations_applied: []
+      };
+
+      // Get database structure for analysis
+      const tablesResponse = await client.get(`/database/tables/database/${databaseId}/`);
+      const tables = tablesResponse.data;
+
+      for (const table of tables) {
+        const fieldsResponse = await client.get(`/database/fields/table/${table.id}/`);
+        const fields = fieldsResponse.data;
+        
+        const rowsResponse = await client.get(`/database/rows/table/${table.id}/?size=1`);
+        const rowCount = rowsResponse.data.count || 0;
+
+        // Structure optimization analysis
+        if (options.optimization_type === 'structure' || options.optimization_type === 'full') {
+          // Check for unused fields
+          const unusedFields = fields.filter(field => 
+            !field.primary && 
+            field.name.startsWith('field_')
+          );
+
+          if (unusedFields.length > 0) {
+            optimization.recommendations.push({
+              type: 'structure',
+              table: table.name,
+              recommendation: `Consider removing ${unusedFields.length} unused fields`,
+              impact: 'medium',
+              fields: unusedFields.map(f => f.name)
+            });
+          }
+        }
+
+        // Data cleanup optimization
+        if (options.optimization_type === 'data_cleanup' || options.optimization_type === 'full') {
+          if (rowCount > 10000) {
+            optimization.recommendations.push({
+              type: 'data_cleanup',
+              table: table.name,
+              recommendation: `Large table (${rowCount} rows) - consider archiving old data`,
+              impact: 'high',
+              row_count: rowCount
+            });
+          }
+        }
+
+        optimization.performance_metrics[table.name] = {
+          row_count: rowCount,
+          field_count: fields.length,
+          estimated_size: rowCount * fields.length * 50
+        };
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `⚡ Database Optimization ${options.dry_run ? 'Analysis' : 'Complete'}:\n\n${JSON.stringify(optimization, null, 2)}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Database optimization failed: ${error.message}`);
+    }
+  }
+
+  async monitorDatabase(databaseId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      const monitoring = {
+        database_id: databaseId,
+        timestamp: new Date().toISOString(),
+        time_range: options.time_range || '24h',
+        metrics: {},
+        alerts: [],
+        recommendations: []
+      };
+
+      // Get current database state
+      const tablesResponse = await client.get(`/database/tables/database/${databaseId}/`);
+      const tables = tablesResponse.data;
+
+      let totalRows = 0;
+      let totalFields = 0;
+
+      for (const table of tables) {
+        const fieldsResponse = await client.get(`/database/fields/table/${table.id}/`);
+        const fields = fieldsResponse.data;
+        
+        const rowsResponse = await client.get(`/database/rows/table/${table.id}/?size=1`);
+        const rowCount = rowsResponse.data.count || 0;
+
+        totalRows += rowCount;
+        totalFields += fields.length;
+
+        monitoring.metrics[table.name] = {
+          rows: rowCount,
+          fields: fields.length,
+          last_updated: table.updated_on
+        };
+
+        // Performance alerts
+        if (rowCount > 25000) {
+          monitoring.alerts.push({
+            type: 'performance',
+            severity: 'warning',
+            table: table.name,
+            message: `Table has ${rowCount} rows - performance may be impacted`
+          });
+        }
+      }
+
+      // Overall metrics
+      monitoring.metrics.database_summary = {
+        total_tables: tables.length,
+        total_rows: totalRows,
+        total_fields: totalFields,
+        avg_rows_per_table: Math.round(totalRows / tables.length),
+        avg_fields_per_table: Math.round(totalFields / tables.length)
+      };
+
+      return {
+        content: [{
+          type: "text",
+          text: `📊 Database Monitoring Report:\n\n${JSON.stringify(monitoring, null, 2)}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Database monitoring failed: ${error.message}`);
+    }
+  }
+
+  async performBulkDataOperations(operationType, tableId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      const operation = {
+        type: operationType,
+        table_id: tableId,
+        timestamp: new Date().toISOString(),
+        batch_size: options.batch_size || 100,
+        status: 'in_progress',
+        results: {
+          processed: 0,
+          successful: 0,
+          failed: 0,
+          errors: []
+        }
+      };
+
+      switch (operationType) {
+        case 'export':
+          const exportResponse = await client.get(`/database/rows/table/${tableId}/?size=1000`);
+          operation.results.data = exportResponse.data.results;
+          operation.results.processed = exportResponse.data.results.length;
+          operation.results.successful = exportResponse.data.results.length;
+          break;
+
+        case 'validate':
+          // Get table structure
+          const fieldsResponse = await client.get(`/database/fields/table/${tableId}/`);
+          const fields = fieldsResponse.data;
+          
+          // Get all rows for validation
+          const rowsResponse = await client.get(`/database/rows/table/${tableId}/?size=1000`);
+          const rows = rowsResponse.data.results;
+
+          const validationResults = [];
+          
+          rows.forEach((row, index) => {
+            const rowValidation = {
+              row_id: row.id,
+              row_index: index,
+              errors: []
+            };
+
+            fields.forEach(field => {
+              if (field.required && !row[field.name]) {
+                rowValidation.errors.push(`Required field '${field.name}' is empty`);
+              }
+              
+              if (field.type === 'email' && row[field.name]) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(row[field.name])) {
+                  rowValidation.errors.push(`Invalid email format in field '${field.name}'`);
+                }
+              }
+            });
+
+            if (rowValidation.errors.length > 0) {
+              validationResults.push(rowValidation);
+              operation.results.failed++;
+            } else {
+              operation.results.successful++;
+            }
+            operation.results.processed++;
+          });
+
+          operation.results.validation_errors = validationResults;
+          break;
+
+        case 'cleanup':
+          const cleanupResponse = await client.get(`/database/rows/table/${tableId}/?size=1000`);
+          const cleanupRows = cleanupResponse.data.results;
+          
+          let cleaned = 0;
+          for (const row of cleanupRows) {
+            let needsUpdate = false;
+            const updates = {};
+            
+            // Clean up common issues
+            Object.entries(row).forEach(([key, value]) => {
+              if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (trimmed !== value) {
+                  updates[key] = trimmed;
+                  needsUpdate = true;
+                }
+              }
+            });
+
+            if (needsUpdate && !options.validate_before_commit) {
+              try {
+                await client.patch(`/database/rows/table/${tableId}/${row.id}/`, updates);
+                cleaned++;
+              } catch (error) {
+                operation.results.errors.push({
+                  row_id: row.id,
+                  error: error.message
+                });
+              }
+            }
+          }
+          
+          operation.results.successful = cleaned;
+          operation.results.processed = cleanupRows.length;
+          break;
+
+        default:
+          throw new Error(`Unsupported operation type: ${operationType}`);
+      }
+
+      operation.status = 'completed';
+
+      return {
+        content: [{
+          type: "text",
+          text: `🔄 Bulk Data Operation Complete:\n\n${JSON.stringify(operation, null, 2)}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Bulk data operation failed: ${error.message}`);
+    }
+  }
+
+  async executeAdvancedQuery(databaseId, queryConfig, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      const query = {
+        database_id: databaseId,
+        config: queryConfig,
+        output_format: options.output_format || 'json',
+        results: [],
+        metadata: {
+          executed_at: new Date().toISOString(),
+          execution_time: null
+        }
+      };
+
+      const startTime = Date.now();
+
+      // Basic table querying with filters
+      if (queryConfig.tables && queryConfig.tables.length > 0) {
+        const tableId = queryConfig.tables[0];
+        
+        let queryUrl = `/database/rows/table/${tableId}/`;
+        const params = new URLSearchParams();
+        
+        // Apply filters
+        if (queryConfig.filters) {
+          Object.entries(queryConfig.filters).forEach(([field, value]) => {
+            params.append(`filter__${field}__contains`, value);
+          });
+        }
+
+        // Apply sorting
+        if (queryConfig.sorting) {
+          if (queryConfig.sorting.field) {
+            const order = queryConfig.sorting.direction === 'desc' ? '-' : '';
+            params.append('order_by', `${order}${queryConfig.sorting.field}`);
+          }
+        }
+
+        params.append('size', '100');
+
+        if (params.toString()) {
+          queryUrl += `?${params.toString()}`;
+        }
+
+        const response = await client.get(queryUrl);
+        query.results = response.data.results || [];
+
+        // Apply aggregations if specified
+        if (queryConfig.aggregations) {
+          query.aggregations = this.performAggregations(query.results, queryConfig.aggregations);
+        }
+
+        // Apply grouping if specified
+        if (queryConfig.grouping && queryConfig.grouping.length > 0) {
+          query.grouped_results = this.performGrouping(query.results, queryConfig.grouping);
+        }
+      }
+
+      query.metadata.execution_time = Date.now() - startTime;
+      query.metadata.result_count = query.results.length;
+
+      // Format output
+      let output = JSON.stringify(query, null, 2);
+      
+      if (options.output_format === 'csv') {
+        output = this.convertToCSV(query.results);
+      } else if (options.output_format === 'table') {
+        output = this.formatAsTable(query.results);
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `🔍 Advanced Query Results:\n\n${output}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Advanced query execution failed: ${error.message}`);
+    }
+  }
+
+  // ====================================
+  // TABLE OPERATIONS
+  // ====================================
+
+  async listTables(databaseId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.get(`/database/tables/database/${databaseId}/`);
+      
+      const tables = response.data;
+      
+      return {
+        content: [{
+          type: "text",
+          text: `📋 Found ${tables.length} table(s):\n\n` + 
+                tables.map(t => `• ${t.name} (ID: ${t.id}) - Created: ${t.created_on}`).join('\n')
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to list tables: ${error.message}`);
+    }
+  }
+
+  async getTableInfo(tableId) {
+    try {
+      const client = this.getHttpClient();
+      const [tableResponse, fieldsResponse, rowsResponse] = await Promise.all([
+        client.get(`/database/tables/${tableId}/`),
+        client.get(`/database/fields/table/${tableId}/`),
+        client.get(`/database/rows/table/${tableId}/?size=1`)
+      ]);
+      
+      const table = tableResponse.data;
+      const fields = fieldsResponse.data;
+      const rowCount = rowsResponse.data.count || 0;
+      
+      return {
+        content: [{
+          type: "text",
+          text: `📊 Table: ${table.name}\n` +
+                `ID: ${table.id}\n` +
+                `Created: ${table.created_on}\n` +
+                `Updated: ${table.updated_on}\n` +
+                `Rows: ${rowCount}\n` +
+                `Fields: ${fields.length}\n\n` +
+                `🔧 Fields:\n` + fields.map(f => `• ${f.name} (${f.type})`).join('\n')
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to get table info: ${error.message}`);
+    }
+  }
+
+  async createTable(databaseId, name, initWithData = false) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.post(`/database/tables/database/${databaseId}/`, {
+        name,
+        init_with_data: initWithData
+      });
+      
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Table created successfully:\nName: ${response.data.name}\nID: ${response.data.id}`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to create table: ${error.message}`);
+    }
+  }
+
+  // ====================================
+  // FIELD OPERATIONS
+  // ====================================
+
+  async listFields(tableId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.get(`/database/fields/table/${tableId}/`);
+      
+      const fields = response.data;
+      
+      return {
+        content: [{
+          type: "text",
+          text: `🔧 Found ${fields.length} field(s):\n\n` + 
+                fields.map(f => `• ${f.name} (${f.type}) - ID: ${f.id}${f.primary ? ' [PRIMARY]' : ''}${f.required ? ' [REQUIRED]' : ''}`).join('\n')
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to list fields: ${error.message}`);
+    }
+  }
+
+  async createField(tableId, type, name, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      const data = { type, name, ...options };
+      
+      const response = await client.post(`/database/fields/table/${tableId}/`, data);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Field created successfully:\nName: ${response.data.name}\nType: ${response.data.type}\nID: ${response.data.id}`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to create field: ${error.message}`);
+    }
+  }
+
+  // ====================================
+  // ROW OPERATIONS
+  // ====================================
+
+  async listRows(tableId, options = {}) {
+    try {
+      const client = this.getHttpClient();
+      
+      let url = `/database/rows/table/${tableId}/`;
+      const params = new URLSearchParams();
+      
+      if (options.page) params.append('page', options.page);
+      if (options.size) params.append('size', options.size);
+      if (options.search) params.append('search', options.search);
+      if (options.order_by) params.append('order_by', options.order_by);
+      
+      // Add filters
+      if (options.filters) {
+        Object.entries(options.filters).forEach(([key, value]) => {
+          params.append(`filter__${key}__contains`, value);
+        });
+      }
+      
+      if (params.toString()) url += `?${params.toString()}`;
+      
+      const response = await client.get(url);
+      const data = response.data;
+      
+      return {
+        content: [{
+          type: "text",
+          text: `📄 Found ${data.results ? data.results.length : 0} row(s) (Total: ${data.count || 0}):\n\n` + 
+                JSON.stringify(data.results, null, 2)
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to list rows: ${error.message}`);
+    }
+  }
+
+  async getRow(tableId, rowId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.get(`/database/rows/table/${tableId}/${rowId}/`);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `📄 Row ${rowId}:\n\n${JSON.stringify(response.data, null, 2)}`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to get row: ${error.message}`);
+    }
+  }
+
+  async createRow(tableId, data, beforeId = null) {
+    try {
+      const client = this.getHttpClient();
+      const payload = { ...data };
+      if (beforeId) payload.before_id = beforeId;
+      
+      const response = await client.post(`/database/rows/table/${tableId}/`, payload);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Row created successfully:\nID: ${response.data.id}\n\n${JSON.stringify(response.data, null, 2)}`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to create row: ${error.message}`);
+    }
+  }
+
+  async updateRow(tableId, rowId, data) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.patch(`/database/rows/table/${tableId}/${rowId}/`, data);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Row updated successfully:\nID: ${response.data.id}\n\n${JSON.stringify(response.data, null, 2)}`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to update row: ${error.message}`);
+    }
+  }
+
+  async deleteRow(tableId, rowId) {
+    try {
+      const client = this.getHttpClient();
+      await client.delete(`/database/rows/table/${tableId}/${rowId}/`);
+      
+      return {
+        content: [{
+          type: "text",
+          text: `✅ Row ${rowId} deleted successfully`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete row: ${error.message}`);
+    }
+  }
+
+  // ====================================
+  // HELPER METHODS FOR ADVANCED QUERIES
+  // ====================================
+
+  performAggregations(data, aggregations) {
+    const results = {};
+    
+    Object.entries(aggregations).forEach(([field, functions]) => {
+      if (Array.isArray(functions)) {
+        functions.forEach(func => {
+          const key = `${field}_${func}`;
+          switch (func) {
+            case 'count':
+              results[key] = data.length;
+              break;
+            case 'sum':
+              results[key] = data.reduce((sum, row) => sum + (parseFloat(row[field]) || 0), 0);
+              break;
+            case 'avg':
+              const values = data.map(row => parseFloat(row[field]) || 0);
+              results[key] = values.reduce((a, b) => a + b, 0) / values.length;
+              break;
+            case 'min':
+              results[key] = Math.min(...data.map(row => parseFloat(row[field]) || 0));
+              break;
+            case 'max':
+              results[key] = Math.max(...data.map(row => parseFloat(row[field]) || 0));
+              break;
+          }
+        });
+      }
+    });
+
+    return results;
+  }
+
+  performGrouping(data, groupFields) {
+    const grouped = {};
+    
+    data.forEach(row => {
+      const groupKey = groupFields.map(field => row[field] || 'null').join('|');
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = [];
+      }
+      grouped[groupKey].push(row);
+    });
+
+    return grouped;
+  }
+
+  convertToCSV(data) {
+    if (data.length === 0) return '';
+    
+    const headers = Object.keys(data[0]);
+    const csvRows = [headers.join(',')];
+    
+    data.forEach(row => {
+      const values = headers.map(header => {
+        const value = row[header];
+        return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value;
+      });
+      csvRows.push(values.join(','));
+    });
+
+    return csvRows.join('\n');
+  }
+
+  formatAsTable(data) {
+    if (data.length === 0) return 'No data';
+    
+    const headers = Object.keys(data[0]);
+    const maxLengths = headers.map(header => 
+      Math.max(header.length, ...data.map(row => String(row[header] || '').length))
+    );
+
+    const formatRow = (row) => 
+      headers.map((header, i) => 
+        String(row[header] || '').padEnd(maxLengths[i])
+      ).join(' | ');
+
+    const separator = maxLengths.map(len => '-'.repeat(len)).join('-+-');
+    
+    return [
+      formatRow(headers.reduce((obj, header) => ({ ...obj, [header]: header }), {})),
+      separator,
+      ...data.map(formatRow)
+    ].join('\n');
+  }
