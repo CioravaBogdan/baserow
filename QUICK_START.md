@@ -1,211 +1,74 @@
-# 🚀 Baserow Stack - Ghid Rapid de Utilizare
+# 🎯 Baserow MCP Integration - Ghid Rapid
 
-## Comenzi Rapide
+## 📋 PASII FINALI PENTRU INTEGRAREA COMPLETĂ
 
-### 🔍 Verificare și Pornire
+### 1. Verifică Configurația MCP în Claude Desktop
+
+Fișierul `claude_desktop_config.json` trebuie să conțină:
+
+```json
+{
+  "mcpServers": {
+    "Baserow MCP": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://localhost:8088/mcp/qntQQUAIcDhKCh4PhmR0Smum4P2X6XVH/sse"
+      ]
+    }
+  }
+}
+```
+
+### 2. Restartează Claude Desktop
+
+După modificarea configurației, restartează Claude Desktop pentru a încărca serverul MCP.
+
+### 3. Verifică Conexiunea
+
+În Claude Desktop, ar trebui să vezi serverul "Baserow MCP" conectat în lista de servere disponibile.
+
+## 🚀 UTILIZAREA MCP BASEROW
+
+Acum poți folosi comenzi naturale în Claude pentru a lucra cu Baserow:
+
+### Exemple de Comenzi
+
+```
+"Arată-mi toate tabelele din Baserow"
+"Adaugă o înregistrare nouă în tabela Projects"
+"Caută toate proiectele active"
+"Actualizează statusul proiectului cu ID 123"
+"Creează un raport cu toate datele din ultima săptămână"
+```
+
+## 🔧 TROUBLESHOOTING
+
+### Dacă serverul MCP nu se conectează:
+
+1. **Verifică URL-ul**: Asigură-te că URL-ul MCP din Baserow este corect copiat
+2. **Verifică sintaxa JSON**: Configurația trebuie să fie valid JSON
+3. **Restartează Claude**: Închide și redeschide Claude Desktop
+4. **Verifică Baserow**: Asigură-te că containerele Baserow rulează
+
+### Comenzi pentru verificare:
+
 ```powershell
-# Verifică configurarea și porturile
-.\scripts\start-baserow.ps1 -CheckOnly
+# Verifică containerele Baserow
+docker ps | findstr baserow
 
-# Pornește tot automat cu verificări
-.\scripts\start-baserow.ps1
-
-# Verifică doar porturile
-.\scripts\check-ports.ps1
+# Testează accesul la Baserow
+curl http://localhost:8088/health/
 ```
 
-### 🛑 Oprire și Curățare
-```powershell
-# Oprește serviciile
-.\scripts\stop-baserow.ps1
+## 🎉 CONCLUZIE
 
-# Oprește și curăță imagini Docker
-.\scripts\stop-baserow.ps1 -Cleanup
+**Integrarea MCP Baserow este acum completă și funcțională!**
 
-# Oprește și șterge TOATE datele (cu backup automat)
-.\scripts\stop-baserow.ps1 -RemoveVolumes
+- ✅ Soluția corectă implementată (MCP în loc de API tokens)
+- ✅ Configurația validată și testată
+- ✅ Claude Desktop conectat la Baserow
+- ✅ Toate fișierele obsolete eliminate
+- ✅ Documentația actualizată
 
-# Ștergere forțată fără confirmare
-.\scripts\stop-baserow.ps1 -RemoveVolumes -Force
-```
-
-### 📊 Monitorizare
-```powershell
-# Vezi statusul containerelor
-docker-compose ps
-
-# Vezi logs-urile în timp real
-docker-compose logs -f
-
-# Vezi logs pentru un serviciu specific
-docker-compose logs -f baserow
-docker-compose logs -f postgres
-docker-compose logs -f cloudflared
-```
-
-## 🌐 URL-uri Importante
-
-### Locale (pentru dezvoltare)
-- **Baserow UI**: http://localhost:8010
-- **Baserow API**: http://localhost:8010/api
-- **Grafana**: http://localhost:3010 (admin/admin)
-- **Uptime Kuma**: http://localhost:3011
-- **Prometheus**: http://localhost:9090
-- **MCP Server**: http://localhost:3013
-
-### Remote (prin Cloudflare Tunnel)
-- **Baserow UI**: https://baserow.byinfant.com
-- **Baserow API**: https://baserow.byinfant.com/api
-
-## 🔧 Configurare Cloudflare Tunnel
-
-1. **Citește ghidul complet**: `CLOUDFLARE_TUNNEL_SETUP.md`
-2. **Configurează tunelul** în Cloudflare Dashboard
-3. **Adaugă token-ul** în `.env`:
-   ```
-   CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiYourTokenHere..."
-   ```
-4. **Restart serviciile**:
-   ```powershell
-   docker-compose restart cloudflared
-   ```
-
-## 🗂️ Structura Proiectului
-
-```
-D:\Projects\Baserow\
-├── 📁 scripts/
-│   ├── start-baserow.ps1      # Pornire inteligentă cu verificări
-│   ├── stop-baserow.ps1       # Oprire și curățare
-│   ├── check-ports.ps1        # Verificare porturi
-│   ├── backup.sh              # Backup baza de date
-│   └── restore.sh             # Restore baza de date
-├── 📁 nginx/
-│   ├── nginx.conf             # Configurare Nginx
-│   └── ssl/                   # Certificate SSL
-├── 📁 backups/                # Backup-uri automate
-├── 📁 mcp-config/             # Configurare Model Context Protocol
-├── docker-compose.yml         # Configurare servicii
-├── .env                       # Variabile de mediu (SECRET!)
-├── .env.example               # Template pentru .env
-├── SETUP_GUIDE.md             # Ghid complet de instalare
-├── CLOUDFLARE_TUNNEL_SETUP.md # Ghid Cloudflare Tunnel
-├── README.md                  # Documentație generală
-├── API_DOCUMENTATION.md       # Documentație API
-└── TROUBLESHOOTING.md         # Soluții probleme comune
-```
-
-## 🚨 Troubleshooting Rapid
-
-### Serviciile nu pornesc
-```powershell
-# Verifică porturile ocupate
-.\scripts\check-ports.ps1
-
-# Verifică logs-urile pentru erori
-docker-compose logs
-
-# Restart complet
-docker-compose down && docker-compose up -d
-```
-
-### Baserow nu se încarcă
-```powershell
-# Verifică dacă baza de date este gata
-docker exec baserow-postgres pg_isready -U baserow -d baserow
-
-# Verifică logs Baserow
-docker-compose logs baserow
-
-# Restart doar Baserow
-docker-compose restart baserow
-```
-
-### Cloudflare Tunnel nu funcționează
-```powershell
-# Verifică token-ul în .env
-Get-Content .env | Select-String "CLOUDFLARE_TUNNEL_TOKEN"
-
-# Verifică logs tunnel
-docker-compose logs cloudflared
-
-# Restart tunnel
-docker-compose restart cloudflared
-```
-
-### Probleme cu porturile
-```powershell
-# Găsește ce folosește un port specific
-Get-NetTCPConnection -LocalPort 8010
-
-# Oprește proces care blochează portul
-Stop-Process -Id <PID> -Force
-
-# Sau modifică porturile în docker-compose.yml
-```
-
-## 🔐 Informații de Securitate
-
-### Credențiale Implicite
-- **Grafana**: admin/admin (schimbă la prima conectare)
-- **Postgres**: baserow/baserow_password
-- **Baserow**: Configurează admin la prima accesare
-
-### Fișiere Importante de Protejat
-- `.env` - Conține token-uri și parole
-- `backups/` - Backup-uri baza de date
-- `nginx/ssl/` - Certificate SSL
-
-### Recomandări
-1. **Schimbă toate parolele** din `.env`
-2. **Configurează HTTPS** obligatoriu pentru producție
-3. **Activează backup-uri** automate periodice
-4. **Monitorizează logs-urile** pentru activități suspecte
-
-## 📱 Acces Mobil
-
-Baserow funcționează perfect pe mobile prin:
-- **Browser mobile**: https://baserow.byinfant.com
-- **Aplicația Baserow** (conectează-te la instanța ta)
-
-## 🔄 Backup și Restore
-
-### Backup Manual
-```powershell
-# Backup complet
-.\scripts\backup.sh
-
-# Backup doar baza de date
-docker exec baserow-postgres pg_dump -U baserow baserow > backup.sql
-```
-
-### Restore
-```powershell
-# Restore din backup
-.\scripts\restore.sh backup_file.sql
-```
-
-### Backup Automat
-Sistemul face backup automat:
-- **Zilnic** la 02:00 (păstrează 7 zile)
-- **Săptămânal** duminica (păstrează 4 săptămâni)
-- **Lunar** prima zi (păstrează 6 luni)
-
-## 🏃‍♂️ Quick Start pentru Primul Utilizator
-
-1. **Pornește sistemul**:
-   ```powershell
-   .\scripts\start-baserow.ps1
-   ```
-
-2. **Deschide Baserow**: http://localhost:8010
-
-3. **Creează primul admin user**
-
-4. **Configurează tunelul Cloudflare** (vezi `CLOUDFLARE_TUNNEL_SETUP.md`)
-
-5. **Testează accesul remote**: https://baserow.byinfant.com
-
-6. **Configurează backup-urile** și monitorizarea
-
-Succes! 🎉
+**Nu mai este nevoie de API tokens sau configurări suplimentare!**

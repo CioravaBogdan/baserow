@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node index.js",
     "setup": "node setup.js",
-    "health": "node health-check.js"
+    "init": "node initialize-baserow.js",
+    "health": "node health-check.js",
+    "status": "node system-status.js",
+    "test:complete": "node test-complete-system.js",
+    "fix-token": "node fix-api-token-final.js",
+    "update-token": "node update-token.js"
   },
   "keywords": [
     "mcp",
